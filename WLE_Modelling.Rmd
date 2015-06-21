@@ -1,0 +1,92 @@
+---
+title: "Weight Lifting Exercise Prediction Model"
+author: "Grush Khalsa"
+date: "June 18, 2015"
+output: html_document
+---
+
+## Introduction
+The goal of this exercise is to use the Weight Lifting Exercise data from Velloso, Bulling, Gellersen, Ugulino, and Fuks (available here: http://groupware.les.inf.puc-rio.br/har) to build a prediction model for the type of exercise performed. 
+  
+For the purpose of this write up the code I used is knit in this document, but with eval=FALSE. I ran the training set in R and the result took 2 hours to run and created a model 1.4 GB large. I don't have the proccesssing power, RAM, or time needed to re-run the model when knitting, so I am copying my results into this file. 
+
+## Model Creation Algorithm
+
+Load the data
+```{r downloadFile,eval=FALSE,echo=TRUE}
+fileurl<-"https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileurl,destfile="./data.csv",method="curl")
+data<-read.csv("./data.csv", na.strings=c("NA","","#DIV/0!"))
+```
+
+Create the training and test sets with 70% training, 30% testing
+```{r createTrainSet,message=FALSE,warning=FALSE,echo=TRUE,eval=FALSE}
+library(caret)
+inTrain<-createDataPartition(y=data$classe,p=.7,list=F)
+training<-data[inTrain,]
+testing<-data[-inTrain,]
+```
+
+Remove the qualitative data columns from the taining set (row number, user name, and three timestamp columns). Then remove all columns with NA values. 55 columns remain. Of the 100 columns with NA values the minimum was 13,458 and the maximum was 13,737 out of 13,737 rows, or 97.97% to 100% NA.
+```{r clean,eval=FALSE,echo=TRUE}
+training<-training[,!colnames(training)%in%c("X","user_name","raw_timestamp_part_1","raw_timestamp_part_2","cvtd_timestamp")]
+training<-training[,colSums(is.na(training))==0]
+```
+
+
+Create a random forest model running all available processors. 
+```{r train,message=FALSE,eval=FALSE,echo=TRUE}
+library(doParallel)
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+
+modelFit<-train(classe~.,data=training,method="rf",prox=T)
+
+stopCluster(cl)
+
+modelFit
+```
+
+Random Forest 
+
+13737 samples
+   54 predictor
+    5 classes: 'A', 'B', 'C', 'D', 'E' 
+
+No pre-processing
+Resampling: Bootstrapped (25 reps) 
+
+Summary of sample sizes: 13737, 13737, 13737, 13737, 13737, 13737, ... 
+
+Resampling results across tuning parameters:
+
+  mtry | Accuracy  | Kappa     | Accuracy SD | Kappa SD
+  -----|-----------|-----------|-------------|-------------
+   2   | 0.9917068 | 0.9895108 | 0.001406686 | 0.001779383
+  28   | 0.9956962 | 0.9945568 | 0.001188506 | 0.001504240
+  54   | 0.9906908 | 0.9882251 | 0.003693290 | 0.004675202
+
+Accuracy was used to select the optimal model using  the largest value.
+The final value used for the model was mtry = 28. 
+
+
+```{r predict,echo=TRUE,eval=FALSE}
+pred<-predict(modelFit,testing)
+table(Prediction=pred,testing$classe)
+```
+
+Prediction  |  A  |  B  |  C  |  D   | E
+------|-----|-----|-----|------|-----
+   A |1674 |   1  |  0   | 0   | 0
+   B  |  0 | 1137 |    2 |   0  |  0
+   C  |  0 |   1  | 1022 |   5  |  0
+   D  |  0 |   0  |  2  | 958   | 3
+   E  |  0 |   0  |  0  |  1 | 1079
+
+  
+## Out of Sample Error
+```{r, echo=TRUE,eval=FALSE}
+testing$predRight<-pred==testing$classe
+length(testing$predRight[!testing$predRight])/nrow(testing)
+```
+The resulting out of sample error on the testing set is 0.2549%
